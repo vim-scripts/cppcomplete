@@ -3,10 +3,12 @@
 " variableName->abc
 " typeName::abc
 " from the members of the struct/class/union that starts with abc.
+" Also completion of the other names in the browser file is supported.
 "
 " The default key mapping to complete the code are:
 " Alt+l in insert mode will try to find the possible completions and display
-" them in a popup menu.
+" them in a popup menu. Also normal completions to the names in
+" cppcomplete.tags.
 " Alt+j in insert mode will show the popup menu with the last results.
 " Selecting one of the  items will paste the text.
 " F8/F9 will work in a similar way as Ctrl+N, Ctrl+P in unextended vim.
@@ -18,12 +20,19 @@
 " The script has a command called GenerateTags that executes the above ctags
 " command. The tag file cppcomplete.tags is local to the script so you can
 " use other tag files without affecting cppcomplete. 
-" For use with a real external class library do you have to generate
-" cppcomplete.tags so that it is a valid tags file. The script is also using the
-" file for jumps. It will probably be a pretty big file but grep lookups are
-" very fast so the performance should be OK. Worse is that the namespace will 
-" be cluttered with a lot of identifiers. 
 " Java users do not need the --C++-types flag.
+"
+" For C/C++ can the script generate the cppcomplete.tags from the included
+" files for you. This is based on vims checkpath function. The path must be
+" set correct, see the vim documentation.
+"
+" This script do not requires grep anymore but it is supported. If the first
+" completion takes a very long time may grep speed things up. The recommended setup
+" is a combination of grep and vims search function. For Windows does the DJGPP
+" port of grep works. You only need grep.exe from the grep'version'b.zip file.
+" A good place for grep.exe could be the compilers bin directory.
+" The zip file is in the v2gnu directory, it can be downloaded from here:
+" http://www.delorie.com/djgpp/getting.html
 "
 " It is possible to define a set of lines from cppcomplete.tags with regular
 " expressions. I call the set for a block. The functions for this:
@@ -35,11 +44,10 @@
 " The jumps are done with an internal function so the tag stack will not be
 " affected.
 "
-" BuildBlockFromRegexp is a thin layer above grep. Use the tab key for tab. :)
 " Some simple examples there > is the prompt:
 " >class:l
 " Gives a block with all members that has a scope of a class beginning with l
-" >^a.*<Tab>s<Tab>
+" >^a.*\ts\t
 " all structures beginning with an a
 " >^\(a\|b\|c)
 " Everything that starts with a,b or c
@@ -47,13 +55,19 @@
 "
 " The script has a number of variables that can be set from the menu in the 
 " GUI version. They are at the top of the script file with descriptions if
-" you want to change them more permanent. Windows users must change one and
-" probably both of the first two configuration variables.
+" you want to change them more permanent.
 "
 " For Java do you probably want to generate a cppcomplete.tags file from the
 " sources of the Java SDK. The use is like with C/C++ but you will get a
 " better result if you change some of the configuration variables.
-" The default access is treated as if it was public.
+" The default access is treated as if it was public. It is strongly
+" recommended that have s:neverUseGrep set to 0 and a working grep program
+" otherwise will the first completion take a very long time.
+"
+" If you are new to vim and have not heard about ctags, regexp, grep are they
+" all described in the online documentation. Just type :help followed by the word you
+" want more information about. They are excellent tools that can be used for
+" many things.
  
 
 " BUGS/Features
@@ -62,21 +76,16 @@
 " get the class name. It is not a real parser.
 " It works surprisingly well but can of course give a surprising result. :)
 " The current scope is unknown.
-" The script makes the assumption that the inherited stuff is given with real
-" type names and not anything else like typedefs.
 " Multidimensional arrays should not have a space between ][, eg.
 " xyz[1][2].abc should be OK but not xyz[1] [2].abc
-" Even if typedef search is enabled is it only one level deep so nested
-" typedefs will fool cppcomplete.
 " The script does not accept functions, eg. xyc()->abc will not be completed
-" The vim documentation warns about the :popup command on Windows but it works
-" perfectly here so I really do not know why.
-" I got a command window popping up every time grep is called under Windows.
+" The first time a completion is done is the script setting up some internal
+" variables. This can be very slow if have s:neverUseGrep set to true.
 " (GTK) If the mouse leaves and then reenters the popup menu is the text cursor affected.
 " (GTK) The popup is displayed at the mouse position and not the text cursor position.
 " For internal use is register c used.
-" Requires exuberant ctags and grep.
-" The only tested platforms are GTK (linux) and Windows with DJGPP grep.
+" Requires exuberant ctags.
+" The only tested platforms are GTK (linux) and Windows.
 " + probably a lot of other issues
 "
 " Anyway, I have done some testing with MFC, DX9 framework (not COM), Java SDK, STL with
@@ -86,19 +95,29 @@
 " Here is the configuration variables.
 "
 " The following two options only applies to Windows.
-" If you are using command.com as the shell is the command line length limited
-" to 126 characters. This script needs more but grep from DJGPP supports
-" longer lines by a response file method. If you are using another shell
-" could perhaps other grep programs be used but you should confirm that
-" :!grep works from vim. 
-" I have only tested it with DJGPP grep under Windows.
-let s:useDJGPP=0
+" This is the only tested grep program under windows and the only one that
+" works with command.com. If grep is used depends on s:useBuffer and
+" s:neverUseGrep.
+let s:useDJGPP=has("win32") || has("win16") || has("dos16") || has("dos32")
 
 " This is the only way to get a popup menu under Windows so it should always
-" be set.
-let s:useWinMenu=0
-
+" be set if you are running under Windows.
+let s:useWinMenu=has("gui_running") && has("gui_win32")
+	
 " The rest is platform independent.
+" Use an internal buffer instead of grep?
+" This should be the fastest option but in some cases is it much faster to use
+" grep. See s:neverUseGrep below.
+let s:useBuffer=1
+
+" Using an internal buffer probably makes the searches faster but building a
+" variable line by line is very expensive in a vim script. The reason is that
+" you do not have real variables like in C/C++ but more like names for values. 
+" If you have a big cppcomplete.tags with many inherits will it be much faster
+" to use grep in some cases
+let s:neverUseGrep=has("win32") || has("win16") || has("dos16") || has("dos32")
+
+
 " Search for typedefs?
 let s:searchTDefs=1
 
@@ -106,8 +125,8 @@ let s:searchTDefs=1
 " this is not well supported
 let s:searchMacros=0
 
-" I have not tested to have anything else than 25 menu lines, not used under
-" Windows.
+" How many lines can the menu have?
+" Not used under Windows.
 let s:maxNMenuLines=35
 
 " Search cppcomplete.tags for class members?
@@ -139,10 +158,18 @@ let s:showPreview=0
 
 " The default language is C/C++, the other option is Java.
 let s:currLanguage="C/C++"
+
 " The max size of the popup menu. Perhaps is 50 more than that is useful.
 " If you set this to some big value may it take a long time before the
 " script has finished.
 let s:tooBig=50
+
+" The max number of items that the popup menu will be built from.
+" This is to prevent very long lists being built internally since this could
+" be very slow. The best value depends on how many identical identifiers it is
+" in cppcomplete.tags.
+" If you are running gvim will you get a warning if the limit is reached.
+let s:maxGrepHits=2*s:tooBig
 
 " Setting this option on means that the ancestor can be anything.
 " This is a good idea since the script does not know the current scope and
@@ -169,6 +196,18 @@ let s:colonNoInherit=0
 " in the class  interface because they do not have a prototype.
 let s:justInteresting=0
 
+" Extra help.
+let s:nannyMode=has("gui_running")
+
+" Complete all identifiers from cppcomplete.tags?
+" Pretty much the same is already in vim but I prefer the popup instead of
+" single stepping with Ctrl-N or Ctrl-P.
+let s:completeOrdinary=1
+
+" Max recursive depth search for typedefs. This is mostly to prevent the
+" script to enter an endless loop for some special cases.
+let s:maxDepth=3
+
 " Mappings
 " Take them as suggestions only.
 imap <F5> <ESC>:PreviewClass<CR>a
@@ -191,6 +230,8 @@ map <S-F8> <ESC>:NextInBlock<CR>
 " 
 " Commands 
 
+command! -nargs=0 AppendFromCheckpath call s:AppendFromCheckpath()
+command! -nargs=0 GenerateFromCheckpath call s:GenerateFromCheckpath()
 command! -nargs=0 GenerateTags call s:GenerateTags()
 command! -nargs=0 PreviewClass call s:PreCl()
 if has("gui_running")
@@ -217,6 +258,7 @@ if has("gui_running")
 	command! -nargs=0 ToggleFastGrep call s:ToggleFastGrep()
 	command! -nargs=0 ToggleShowAccess call s:ToggleShowAccess()
 	command! -nargs=0 ToggleInheritance call s:ToggleInheritance()
+	command! -nargs=0 ToggleNanny call s:ToggleNanny()
 	command! -nargs=0 ShowCurrentSettings call s:ShowCurrentSettings()
 	command! -nargs=0 SetMaxHits call s:SetMaxHits()
 	command! -nargs=0 BuildMenuFromBlock call s:BuildMenuFromBlock()
@@ -233,47 +275,88 @@ command! -nargs=1 JumpToLineInBlock call s:JumpToLineInBlock(<f-args>)
 
 " some variables for internal use
 let s:listAge=0
+let s:bufAge=0
 let s:lastHit=0
 let s:hitList=""
 let s:regexBlock=""
+let s:nannyAsked="\n"
+
+if has("win32") || has("win16") || has("dos16") || has("dos32")
+	let s:ctagsTemp=tempname()
+	let s:grepTemp=tempname()
+endif
 
 " build the gui menu
 if has("gui_running")
 	set mousemodel=popup
-	silent! aunmenu CppComplete
-	amenu .100 &CppComplete.&Preview.Scan\ for\ new\ &items<Tab>:RefreshMenu   :RefreshMenu<CR>
-	amenu .200 &CppComplete.&Preview.&Classes.*****\ \ \ Nothing\ yet\ \ \ *****   <NOP>
-	amenu .300 &CppComplete.&Preview.&Structures.*****\ \ \ Nothing\ yet\ \ \ ******   <NOP>
-	amenu .400 &CppComplete.&Preview.&Unions.*****\ \ \ Nothing\ yet\ \ \ *****   <NOP>
-	amenu &CppComplete.&Use\ generated\ tag\ file\ in\ tags.&No<TAB>:ClearFromTags   :ClearFromTags<CR>
-	amenu &CppComplete.&Use\ generated\ tag\ file\ in\ tags.&Yes<Tab>:InsertToTags   :InsertToTags<CR>
-	amenu &CppComplete.&Toggle.&Typedefs<Tab>:ToggleTDefs   :ToggleTDefs<CR>
-	amenu &CppComplete.&Toggle.&Macros<Tab>:ToggleMacros   :ToggleMacros<CR>
-	amenu &CppComplete.&Toggle.&Access\ check<Tab>:ToggleAccess  :ToggleAccess<CR>
-	amenu &CppComplete.&Toggle.&gd<Tab>:ToggleGD   :ToggleGD<CR>
-	amenu &CppComplete.&Toggle.&Preview<Tab>:TogglePreview   :TogglePreview<CR>
-	amenu &CppComplete.&Toggle.&Relaxed\ ancestor\ check<Tab>:ToggleRelaxed   :ToggleRelaxed<CR>
-	amenu &CppComplete.&Toggle.Global\ &variables<Tab>:ToggleGlobalVars  :ToggleGlobalVars<CR>
-	amenu &CppComplete.&Toggle.&Classes\ as\ class\ members<Tab>:ToggleClassMembers  :ToggleClassMembers<CR>
-	amenu &CppComplete.&Toggle.Class\ &names\ tags<Tab>:ToggleClassTags  :ToggleClassTags<CR>
-	amenu &CppComplete.&Toggle.Restrict\ p&ossible\ types<Tab>:ToggleRestricted  :ToggleRestricted<CR>
-	amenu &CppComplete.&Toggle.&Fast\ grep<Tab>:ToggleFastGrep  :ToggleFastGrep<CR>
-	amenu &CppComplete.&Toggle.&Show\ access<Tab>:ToggleShowAccess  :ToggleShowAccess<CR>
-	amenu &CppComplete.&Toggle.&Inheritance\ for\ ::<Tab>:ToggleInheritance  :ToggleInheritance<CR>
-	amenu &CppComplete.&GenerateTags.Re&build\ tags<Tab>:GenerateTags   :GenerateTags<CR>
-	amenu &CppComplete.&GenerateTags.&Append\ to<Tab>:GenerateAndAppend   :GenerateAndAppend<CR>
-	amenu &CppComplete.&GenerateTags.&Browse\ file\ to\ append<Tab>:BrowseNFiles   :BrowseNFiles<CR>
-	amenu &CppComplete.S&et\ C/C++\ or\ Java<Tab>:SetLanguage   :SetLanguage<CR>
-	amenu &CppComplete.Set\ max\ number\ of\ &hits\ displayed<Tab>:SetMaxHits   :SetMaxHits<CR>
-	amenu &CppComplete.&Show\ current\ settings<Tab>ShowCurrentSettings   :ShowCurrentSettings<CR>
-	amenu &CppComplete.-SEP1-   <NOP>
-	amenu &CppComplete.&Build\ Menu\ From\ Block<Tab>:BuildMenuFromBlock   :BuildMenuFromBlock<CR>
-	amenu &CppComplete.-SEP2-   <NOP>
-	amenu &CppComplete.&RestorePopUp<Tab>:RestorePopup :RestorePopup<CR>
+	silent! aunmenu &cppcomplete
+	silent! tunmenu &cppcomplete
+	amenu .100 &cppcomplete.&Preview.Scan\ for\ new\ &items<Tab>:RefreshMenu   :RefreshMenu<CR>
+	tmenu .100 &cppcomplete.&Preview.Scan\ for\ new\ &items Scan cppcomplete.tags for classes, structures and unions
+	amenu .200 &cppcomplete.&Preview.&Classes.*****\ \ \ Nothing\ yet\ \ \ *****   <NOP>
+	amenu .300 &cppcomplete.&Preview.&Structures.*****\ \ \ Nothing\ yet\ \ \ ******   <NOP>
+	amenu .400 &cppcomplete.&Preview.&Unions.*****\ \ \ Nothing\ yet\ \ \ *****   <NOP>
+	amenu &cppcomplete.&Use\ generated\ tag\ file\ in\ tags.&No<TAB>:ClearFromTags   :ClearFromTags<CR>
+	tmenu &cppcomplete.&Use\ generated\ tag\ file\ in\ tags.&No Do not use cppcomplete.tags as an ordinary tag file
+	amenu &cppcomplete.&Use\ generated\ tag\ file\ in\ tags.&Yes<Tab>:InsertToTags   :InsertToTags<CR>
+	tmenu &cppcomplete.&Use\ generated\ tag\ file\ in\ tags.&Yes Use cppcomplete.tags as an ordinary tag file
+	amenu &cppcomplete.&Toggle.&Typedefs<Tab>:ToggleTDefs   :ToggleTDefs<CR>
+	tmenu &cppcomplete.&Toggle.&Typedefs Toggle search for typedefs
+	amenu &cppcomplete.&Toggle.&Macros<Tab>:ToggleMacros   :ToggleMacros<CR>
+	tmenu &cppcomplete.&Toggle.&Macros Toggle search for macros
+	amenu &cppcomplete.&Toggle.&Access\ check<Tab>:ToggleAccess  :ToggleAccess<CR>
+	tmenu &cppcomplete.&Toggle.&Access\ check Should only  items with the proper access status be displayed?
+	amenu &cppcomplete.&Toggle.&gd<Tab>:ToggleGD   :ToggleGD<CR>
+	tmenu &cppcomplete.&Toggle.&gd Try gd before gD?
+	amenu &cppcomplete.&Toggle.&Preview<Tab>:TogglePreview   :TogglePreview<CR>
+	tmenu &cppcomplete.&Toggle.&Preview Open a preview window after completion?
+	amenu &cppcomplete.&Toggle.&Relaxed\ ancestor\ check<Tab>:ToggleRelaxed   :ToggleRelaxed<CR>
+	tmenu &cppcomplete.&Toggle.&Relaxed\ ancestor\ check Allow inner classes that may be wrong but hard to check?
+	amenu &cppcomplete.&Toggle.Global\ &variables<Tab>:ToggleGlobalVars  :ToggleGlobalVars<CR>
+	tmenu &cppcomplete.&Toggle.Global\ &variables Search cppcomplete.tags for global variables?
+	amenu &cppcomplete.&Toggle.&Classes\ as\ class\ members<Tab>:ToggleClassMembers  :ToggleClassMembers<CR>
+	tmenu &cppcomplete.&Toggle.&Classes\ as\ class\ members Complete classes that is members of other classes?
+	amenu &cppcomplete.&Toggle.Class\ &names\ tags<Tab>:ToggleClassTags  :ToggleClassTags<CR>
+	tmenu &cppcomplete.&Toggle.Class\ &names\ tags Search for classes that defined in other classes scop?
+	amenu &cppcomplete.&Toggle.Restrict\ p&ossible\ types<Tab>:ToggleRestricted  :ToggleRestricted<CR>
+	tmenu &cppcomplete.&Toggle.Restrict\ p&ossible\ types Allow only completions of certain types?
+	amenu &cppcomplete.&Toggle.&Fast\ grep<Tab>:ToggleFastGrep  :ToggleFastGrep<CR>
+	tmenu &cppcomplete.&Toggle.&Fast\ grep --mmap option for GNU grep
+	amenu &cppcomplete.&Toggle.&Show\ access<Tab>:ToggleShowAccess  :ToggleShowAccess<CR>
+	tmenu &cppcomplete.&Toggle.&Show\ access Should the popup menu also display access information?
+	amenu &cppcomplete.&Toggle.&Inheritance\ for\ ::<Tab>:ToggleInheritance  :ToggleInheritance<CR>
+	tmenu &cppcomplete.&Toggle.&Inheritance\ for\ :: Should :: also show inherited items?
+	amenu &cppcomplete.&Toggle.&Nanny\ mode<Tab>:ToggleNanny  :ToggleNanny<CR>
+	tmenu &cppcomplete.&Toggle.&Nanny\ mode Try to give some extra help.
+	amenu &cppcomplete.&GenerateTags.Re&build\ from\ current\ directory<Tab>:GenerateTags   :GenerateTags<CR>
+	tmenu &cppcomplete.&GenerateTags.Re&build\ from\ current\ directory Generate a new cppcomplete.tags file from the files in the current dorectory
+	amenu &cppcomplete.&GenerateTags.&Append\ from\ current\ directory<Tab>:GenerateAndAppend   :GenerateAndAppend<CR>
+	tmenu &cppcomplete.&GenerateTags.&Append\ from\ current\ directory Append instead of creating a totally new one.
+	amenu &cppcomplete.&GenerateTags.&Browse\ file\ to\ append<Tab>:BrowseNFiles   :BrowseNFiles<CR>
+	tmenu &cppcomplete.&GenerateTags.&Browse\ file\ to\ append Append a file using the file browser.
+	amenu &cppcomplete.&GenerateTags.A&uto\ Generate\ a\ new\ one<Tab>:GenerateFromCheckpath   :GenerateFromCheckpath<CR>
+	tmenu &cppcomplete.&GenerateTags.A&uto\ Generate\ a\ new\ one Auto generate a new cppcomplete.tags file for C/C++.
+	amenu &cppcomplete.&GenerateTags.Aut&o\ Generate\ and\ append<Tab>:AppendFromCheckpath   :AppendFromCheckpath<CR>
+	tmenu &cppcomplete.&GenerateTags.Aut&o\ Generate\ and\ append Auto generate and append.
+	amenu &cppcomplete.S&et\ C/C++\ or\ Java<Tab>:SetLanguage   :SetLanguage<CR>
+	tmenu &cppcomplete.S&et\ C/C++\ or\ Java Set the current language used.
+	amenu &cppcomplete.Set\ max\ number\ of\ &hits\ displayed<Tab>:SetMaxHits   :SetMaxHits<CR>
+	tmenu &cppcomplete.Set\ max\ number\ of\ &hits\ displayed How many items should the popup menu have?
+	amenu &cppcomplete.&Show\ current\ settings<Tab>ShowCurrentSettings   :ShowCurrentSettings<CR>
+	tmenu &cppcomplete.&Show\ current\ settings List the current settings.
+	amenu &cppcomplete.-SEP1-   <NOP>
+	amenu &cppcomplete.&Build\ Menu\ From\ Block<Tab>:BuildMenuFromBlock   :BuildMenuFromBlock<CR>
+	tmenu &cppcomplete.&Build\ Menu\ From\ Block Build a menu from the items in the current bllock.
+	amenu &cppcomplete.-SEP2-   <NOP>
+	amenu &cppcomplete.&RestorePopUp<Tab>:RestorePopup :RestorePopup<CR>
+	tmenu &cppcomplete.&RestorePopUp Restores the popup menu.
 endif
 
 function! s:PreCl()
 	if &previewwindow		
+		if has("gui_running")
+			call confirm("You are not supposed to do this then you\nalready are in the Preview window.","&OK",1,"Error")
+		endif
       		return
     	endif
 	if ! s:CheckForTagFile()
@@ -288,6 +371,9 @@ function! s:PreCl()
 endfunction
 function! s:PreviewEntry(entry)
 	if &previewwindow		
+		if has("gui_running")
+			call confirm("You are not supposed to do this then you\nalready are in the Preview window.","&OK",1,"Error")
+		endif
       		return
     	endif
 	if ! s:CheckForTagFile()
@@ -315,7 +401,7 @@ function! s:ToggleGD()
 	else
 		let cText="Cppcomplete will first try gd before gD"
 	endif
-	call confirm(cText,"&Ok",1,"Info")
+	call confirm(cText,"&OK",1,"Info")
 endfunction
 function! s:ToggleAccess()
 	let s:accessCheck=!s:accessCheck
@@ -324,7 +410,7 @@ function! s:ToggleAccess()
 	else
 		let cText="Access check disabled"
 	endif
-	call confirm(cText, "&Ok",1,"Info")
+	call confirm(cText, "&OK",1,"Info")
 endfunction
 function! s:ToggleTDefs()
 	let s:searchTDefs=!s:searchTDefs
@@ -333,7 +419,7 @@ function! s:ToggleTDefs()
 	else
 		let cText="Further searches will not look for typedefs"
 	endif
-	call confirm(cText,"&Ok",1,"Info")
+	call confirm(cText,"&OK",1,"Info")
 endfunction
 function! s:ToggleMacros()
 	let s:searchMacros=!s:searchMacros
@@ -342,7 +428,7 @@ function! s:ToggleMacros()
 	else
 		let cText="Further searches will not look for macros"
 	endif
-	call confirm(cText,"&Ok",1,"Info")
+	call confirm(cText,"&OK",1,"Info")
 endfunction
 function! s:ToggleRelaxed()
 	let s:relaxedParents=! s:relaxedParents
@@ -351,7 +437,7 @@ function! s:ToggleRelaxed()
 	else
 		let cText="Strict ancestor check is now enabled"
 	endif
-	call confirm(cText, "&Ok",1,"Info")
+	call confirm(cText, "&OK",1,"Info")
 endfunction
 function! s:ToggleClassMembers()
 	let s:searchClassMembers=! s:searchClassMembers
@@ -363,7 +449,7 @@ function! s:ToggleClassMembers()
 		let s:searchClassMembers=1
 		return
 	endif
-	call confirm(cText, "&Ok",1, "Info")
+	call confirm(cText, "&OK",1, "Info")
 endfunction
 function! s:ToggleClassTags()
 	let s:searchClassTags=! s:searchClassTags
@@ -372,7 +458,7 @@ function! s:ToggleClassTags()
 	else
 		let cText="No search for class names"
 	endif
-	call confirm(cText, "&Ok",1, "Info")
+	call confirm(cText, "&OK",1, "Info")
 endfunction
 function! s:ToggleRestricted()
 	if (s:currLanguage!="Java") && (! s:justInteresting)
@@ -386,7 +472,7 @@ function! s:ToggleRestricted()
 	else
 		let cText="Completions not restricted by type"
 	endif
-	call confirm(cText, "&Ok",1, "Info")
+	call confirm(cText, "&OK",1, "Info")
 endfunction
 function! s:ToggleFastGrep()
 	if (s:grepPrg=="grep")
@@ -396,7 +482,7 @@ function! s:ToggleFastGrep()
 		let s:grepPrg="grep"
 		let cText="Standard grep is now used"
 	end
-	call confirm(cText, "&Ok",1, "Info")
+	call confirm(cText, "&OK",1, "Info")
 endfunction
 function! s:ToggleInheritance()
 	let s:colonNoInherit=! s:colonNoInherit
@@ -405,7 +491,16 @@ function! s:ToggleInheritance()
 	else
 		let cText=":: will show the whole scope with items from the ancestors"
 	endif
-	call confirm(cText, "&Ok",1, "Info")
+	call confirm(cText, "&OK",1, "Info")
+endfunction
+function! s:ToggleNanny()
+	let s:nannyMode=! s:nannyMode
+	if s:nannyMode
+		let cText="Nanny mode enabled"
+	else
+		let cText="Nanny mode disabled"
+	endif
+	call confirm(cText,"&OK",1,"Info")
 endfunction
 function! s:ToggleShowAccess()
 	let s:showAccess=! s:showAccess
@@ -414,7 +509,7 @@ function! s:ToggleShowAccess()
 	else
 		let cText="No access information will be displayed"
 	endif
-	call confirm(cText, "&Ok",1, "Info")
+	call confirm(cText, "&OK",1, "Info")
 endfunction
 function! s:ToggleGlobalVars()
 	let s:searchGlobalVars=! s:searchGlobalVars
@@ -423,27 +518,27 @@ function! s:ToggleGlobalVars()
 	else
 		let cText="No search for global variables"
 	endif
-	call confirm(cText, "&Ok",1, "Info")
+	call confirm(cText, "&OK",1, "Info")
 endfunction
 function! s:InsertToTags()
 	if (match(&tags, "cppcomplete.tags,",0)>=0)
-		call confirm("cppcomplete.tags is already in tags","&Ok",1,"Info")
+		call confirm("cppcomplete.tags is already in tags","&OK",1,"Info")
 	else
 		let &tags="cppcomplete.tags," . &tags
 	endif
 endfunction
 function! s:ClearFromTags()
 	if (match(&tags,"cppcomplete.tags")<0)
-		call confirm("tags did not include cppcomplete.tags","&Ok",1,"Info")
+		call confirm("tags did not include cppcomplete.tags","&OK",1,"Info")
 	else
 		let &tags=substitute(&tags,"cppcomplete.tags.","","g")
 	endif
 endfunction
 
 function! s:SetGrepArg(argtxt)
-	silent! call delete("greparg.tmp")
+	silent! call delete(s:grepTemp)
 	split
-	silent! execute "silent! edit greparg.tmp"
+	silent! execute "silent! edit " s:grepTemp
 	let @c=a:argtxt
 	normal! "cp
 	silent! w
@@ -453,24 +548,37 @@ function! s:RefreshMenu()
 	if ! s:CheckForTagFile()
 		return
 	endif
-	let spaceAfter="[^!\t]\\+[\t]"
+	let spaceAfter="[^!\t]\\+\t"
 	let res=confirm("If you have a big cppcomplete.tags file may strange things happen", "&All\n&Just items in the current directory\n&Cancel",2,"Warning")
 	if res==1
 		let fileSelect=spaceAfter
 	elseif res==3
 		return
 	else
-		let fileSelect="[^\\/\t]\\+[\t]"
+		let fileSelect="[^\\/\t]\\+\t"
 	endif
-	silent! aunmenu CppComplete.Preview.Classes
-	silent! aunmenu CppComplete.Preview.Structures
-	silent! aunmenu CppComplete.Preview.Unions
+	silent! aunmenu cppcomplete.Preview.Classes
+	silent! aunmenu cppcomplete.Preview.Structures
+	silent! aunmenu cppcomplete.Preview.Unions
 	let cf=0
 	let sf=0
 	let uf=0
-	if s:useDJGPP
+	if s:useBuffer && s:neverUseGrep
+		split
+		let items=""
+		call s:CheckHiddenLoaded()
+		let x=line(".")
+		execute ":call search('^" . spaceAfter . fileSelect . spaceAfter . "\\(c\\|s\\|u\\)','W')"
+		while line(".")!=x
+			let x=line(".")
+			normal! "cyy$
+			let items=items . @c
+			execute ":call search('^" . spaceAfter . fileSelect . spaceAfter . "\\(c\\|s\\|u\\)','W')"
+		endwhile
+		quit
+	elseif s:useDJGPP
 		call s:SetGrepArg("'^" . spaceAfter . fileSelect . spaceAfter . "\\(c\\|s\\|u\\)' cppcomplete.tags")
-		silent! let items=system(s:grepPrg . " @greparg.tmp")
+		silent! let items=system(s:grepPrg . " @" . s:grepTemp)
 	else
 		let items=system(s:grepPrg . " '^" . spaceAfter . fileSelect . spaceAfter . "\\(c\\|s\\|u\\)' cppcomplete.tags")
 	endif
@@ -493,7 +601,7 @@ function! s:RefreshMenu()
 		let ms=match(items,"^[^\t]*\t[^\t]*\t[^\t]*\ts.*",oldM)
 		if (mc>=0) && (mc<nextM)
 			let cf=1
-			execute "amenu .200 &CppComplete.&Preview.&Classes." . cMore . @c . " :PreviewEntry " . @c ."<CR>" 
+			execute "amenu .200 &cppcomplete.&Preview.&Classes." . cMore . @c . " :PreviewEntry " . @c ."<CR>" 
 			let nclines=nclines+1
 			if (! s:useWinMenu)
 				if (nclines%s:maxNMenuLines)==0
@@ -502,7 +610,7 @@ function! s:RefreshMenu()
 			endif
 		elseif (ms>=0) && (ms<nextM)
 			let sf=1
-			execute "amenu .300 &CppComplete.&Preview.&Structures." . sMore . @c . " :PreviewEntry " . @c ."<CR>"
+			execute "amenu .300 &cppcomplete.&Preview.&Structures." . sMore . @c . " :PreviewEntry " . @c ."<CR>"
 			let nslines=nslines+1
 			if (! s:useWinMenu)
 				if (nslines%s:maxNMenuLines)==0
@@ -512,7 +620,7 @@ function! s:RefreshMenu()
 
 		else
 			let uf=1
-			execute "amenu .400 &CppComplete.&Preview.&Unions." . uMore . @c . " :PreviewEntry " . @c ."<CR>"
+			execute "amenu .400 &cppcomplete.&Preview.&Unions." . uMore . @c . " :PreviewEntry " . @c ."<CR>"
 			let nulines=nulines+1
 			if (! s:useWinMenu)
 				if (nulines%s:maxNMenuLines)==0
@@ -523,24 +631,26 @@ function! s:RefreshMenu()
 		endif
 	endwhile
 	if cf==0
-		amenu &CppComplete.&Preview.&Classes.*****\ \ \ no\ classes\ found\ \ \ ***** <NOP>
+		amenu &cppcomplete.&Preview.&Classes.*****\ \ \ no\ classes\ found\ \ \ ***** <NOP>
 	endif
 	if sf==0
-		amenu &CppComplete.&Preview.&Structures.*****\ \ \ no\ structures\ found\ \ \ ***** <NOP>
+		amenu &cppcomplete.&Preview.&Structures.*****\ \ \ no\ structures\ found\ \ \ ***** <NOP>
 	endif
 	if uf==0
-		amenu &CppComplete.&Preview.&Unions.*****\ \ \ no\ unions\ found\ \ \ ***** <NOP>
+		amenu &cppcomplete.&Preview.&Unions.*****\ \ \ no\ unions\ found\ \ \ ***** <NOP>
 	endif
 endfunction
 
 function! s:BuildMenuFromBlock()
+	let hittedList="\n"
 	if s:regexBlock==""
-		call confirm("No block to build the menu from.\nYou must first create the block with the\n:BuildBlockFromRegexp command.","&Ok",1,"Error")
+		call confirm("No block to build the menu from.\nYou must first create the block with the\n:BuildBlockFromRegexp command.","&OK",1,"Error")
 		return
 	endif
-	silent! aunmenu CppComplete.Preview.Regexp
-	let spaceAfter="[^!\t]\\+[\t]"
+	silent! aunmenu cppcomplete.Preview.Regexp
+	let spaceAfter="[^!\t]\\+\t"
 	let nLines=0
+	let skippedLines=0
 	let nextM=0
 	let grouped=confirm("Which type of menu","&Grouped by visibility\n&Not grouped",1,"Question")
 	if grouped!=1
@@ -584,12 +694,19 @@ function! s:BuildMenuFromBlock()
 				endif
 			endif
 		endif
-		execute "amenu &CppComplete.&Preview.Regexp." . bMore . group . @c . " :JumpToLineInBlock " . nLines . "<CR>"
+		if match(hittedList, "\n" . group . @c . "\n")<0
+			let hittedList=hittedList . group . @c . "\n"
+			execute "amenu &cppcomplete.&Preview.Regexp." . bMore . group . @c . " :JumpToLineInBlock " . nLines . "<CR>"
+		else
+			let skippedLines=skippedLines+1
+		endif
 	endwhile
 	if nLines==0
-		call confirm("Could not build the menu", "&Ok",1,"Error")
+		call confirm("Could not build the menu", "&OK",1,"Error")
+	elseif skippedLines==0
+		call confirm("A menu with " . nLines . " items has been built.\nIt is placed under the Preview submenu", "&OK", 1, "Info")
 	else
-		call confirm("A menu with " . nLines . " items has been built.\nIt is placed under the Preview submenu", "&Ok", 1, "Info")
+		call confirm("From the original " . nLines . " items was " . skippedLines . "\n skipped because of name clashes.\nThe resulting menu can be reached from the Preview submenu.", "&OK", 1, "Info")
 	endif
 endfunction
 
@@ -624,7 +741,6 @@ function! s:BuildIt()
 	if has("gui_running")
 		aunmenu PopUp
 	endif
-	let s:lastMatches=""
 	if (s:matches=="")
 		if has("gui_running")
 			amenu PopUp.****\ \ no\ completions\ found\ \ *****   :let @c=''<CR>
@@ -634,8 +750,10 @@ function! s:BuildIt()
 	let nextM=0
 	let line=1
 	let pMore=""
+	let totHits=0
 
 	while (s:tooBig>s:nHits) && (match(s:matches,"\t",nextM)>0)
+		let totHits=totHits+1
 		let @c=strpart(s:matches, nextM, match(s:matches,"\t",nextM)-nextM)
 		if (strpart(@c,0,9)!="operator ") && (match(s:hitList,"\n" . substitute(@c,"\\~", ":","g") . "\n")<0)
 			let sAcc=matchend(s:matches,"access:",nextM)
@@ -676,7 +794,11 @@ function! s:BuildIt()
 			else
 				amenu PopUp.****\ \ Max\ number\ of\ hits\ reched\ **** <NOP>
 			endif
-			call confirm( qStr, "&Ok", 1,"Warning")
+			call confirm( qStr, "&OK", 1,"Warning")
+		endif
+	elseif totHits>=s:maxGrepHits
+		if has("gui_running")
+			call confirm("The number of items the popup was built from\nis equal to s:maxGrepHits.\nMore completions may exists.","&OK",1,"Warning")
 		endif
 	endif
 	if s:nHits==0 && has("gui_running")
@@ -715,8 +837,7 @@ function! s:DoMenu()
 	let colP = col(".")
 	normal! l
 	if colP!=col(".")
-		normal! h
-		normal! h
+		normal! hh
 		let strangeFix=1
 	else
 		let strangeFix=0
@@ -811,21 +932,68 @@ function! s:InsHit()
 	endif
 endfunction
 	
-
 function! s:UpdateInheritList()
-	let spaceAfter="[^!\t]\\+[\t]"
+	let spaceAfter="[^!\t]\\+\t"
 	let after3=spaceAfter . spaceAfter . spaceAfter
 	if (s:listAge!=getftime("cppcomplete.tags"))
-		if s:useDJGPP
+		if s:useBuffer && s:neverUseGrep
+			split
+			let s:inheritsList="\n"
+			call s:CheckHiddenLoaded()
+			let x=line(".")
+			execute ":call search('^" . after3 . ".*inherits:','W')"
+			while line(".")!=x
+				let x=line(".")
+				normal! "cyy$
+				let s:inheritsList=s:inheritsList . @c
+				execute ":call search('^" . after3 . ".*inherits:','W')"
+			endwhile
+			quit
+		elseif s:useDJGPP
 			call s:SetGrepArg("'^" . after3 . ".*" ."inherits:.*' cppcomplete.tags")
-			silent! let s:inheritsList="\n" . system(s:grepPrg . " @greparg.tmp")
+			silent! let s:inheritsList="\n" . system(s:grepPrg . " @" . s:grepTemp)
 		else
 			let s:inheritsList="\n" . system(s:grepPrg . " '^" . after3 . ".*" ."inherits:.*' cppcomplete.tags")
 		endif
 		let s:listAge=getftime("cppcomplete.tags")
 	endif
 endfunction
+function! s:SetMatchesFromBuffer(grepArg)
+	let hits=0
+	split
+	let s:matches=""
+	call s:CheckHiddenLoaded()
+	let x=line(".")
+	execute ":call search(" . a:grepArg .",'W')"
+	while (line(".")!=x) && (hits<s:maxGrepHits)
+		let hits=hits+1
+		let x=line(".")
+		normal! "cyy$
+		let s:matches=s:matches . @c
+	execute ":call search(" . a:grepArg .",'W')"
+	endwhile
+	quit
+endfunction
+
+function! s:BuildFromOrdinary()
+	let maxGrep=" --max-count=" . s:maxGrepHits
+	if s:useBuffer
+		call s:SetMatchesFromBuffer("'^" . s:uTyped. "'")
+	elseif s:useDJGPP
+		call s:SetGrepArg("'^" . s:uTyped . "'")
+		let s:matches=system(s:grepPrg . " @" . s:grepTemp . " cppcomplete.tags")
+	else
+		let s:matches=system(s:grepPrg . maxGrep . " '^" . s:uTyped . "' cppcomplete.tags")
+	endif
+endfunction
+
 function! s:BuildMenu()
+	if &previewwindow		
+		if has("gui_running")
+			call confirm("Dont do this is the Preview window","&OK",1,"Error")
+		endif
+      		return
+    	endif
 	let s:nHits=0
 	if ! s:CheckForTagFile()
 		return
@@ -833,73 +1001,70 @@ function! s:BuildMenu()
 	let oldParents=s:relaxedParents
 	call s:GetPieces()
 	if (s:gotCType)
-		let triesLeft=2
-		let spaceAfter="[^!\t]\\+[\t]"
-		let after3=spaceAfter . spaceAfter . spaceAfter
+		let spaceAfter="[^! \t]\\+\t"
+		let someSpaceAfter="[^\t]\\+\t"
+		let after3=spaceAfter . someSpaceAfter . someSpaceAfter
 
-		while (triesLeft>0)
-			let triesLeft=triesLeft-1
-			call s:UpdateInheritList()
-			let accSav=s:accessCheck
-			if s:colonSep && s:colonNoInherit
-				let s:classList=s:clType . "[\t]"
-				let s:accessCheck=0
-				let s:colonSep=0
-			else
-				call s:GetParents()
-			endif
-			if s:justInteresting
-				let interesting="\\(c\\|m\\|p\\|s\\|u\\)[\t]"
-			else
-				let interesting=""
-			endif
-			let firstPart=s:uTyped . after3 . interesting . ".*\\(class:\\|struct:\\|union:\\)"
-			if ! s:colonSep
-				if s:accessCheck
-					if s:currLanguage=="Java"
-						let secondPart=".*access:\\(default\\|public\\)' cppcomplete.tags"
-					else
-						let secondPart=".*access:public' cppcomplete.tags"
-					endif
-				else
-					let secondPart=".*' cppcomplete.tags"
-				endif
-			elseif s:accessCheck
+		call s:UpdateInheritList()
+		let accSav=s:accessCheck
+		if s:colonSep && s:colonNoInherit
+			let s:classList=s:clType . "\t"
+			let s:accessCheck=0
+			let s:colonSep=0
+		else
+			call s:GetParents()
+		endif
+		if s:justInteresting
+			let interesting="\\(c\\|m\\|p\\|s\\|u\\)\t"
+		else
+			let interesting=""
+		endif
+		let firstPart=s:uTyped . after3 . interesting . ".*\\(class:\\|struct:\\|union:\\)"
+		if ! s:colonSep
+			if s:accessCheck
 				if s:currLanguage=="Java"
-					let secondPart=".*access:\\(public\\|default\\|protected\\)\\|"
+					let secondPart=".*access:\\(default\\|public\\)"
 				else
-					let secondPart=".*access:\\(public\\|protected\\)\\|"
+					let secondPart=".*access:public"
 				endif
 			else
-				let secondPart=".*\\|"
+				let secondPart=""
 			endif
-			if s:colonSep
-				if (s:useDJGPP)
-					call s:SetGrepArg("'^\\(" . firstPart . s:classList . secondPart . firstPart . s:clType . "\\)' cppcomplete.tags")
-					silent! let s:matches=system(s:grepPrg . " @greparg.tmp")
-				else
-					let s:matches=system(s:grepPrg . " '^\\(" . firstPart . s:classList . secondPart . firstPart . s:clType . "\\)' cppcomplete.tags")
-				endif
+		elseif s:accessCheck
+			if s:currLanguage=="Java"
+				let secondPart=".*access:\\(public\\|default\\|protected\\)\\|"
+			else
+				let secondPart=".*access:\\(public\\|protected\\)\\|"
+			endif
+		else
+			let secondPart=".*\\|"
+		endif
+		let maxGrep=" --max-count=" . s:maxGrepHits . " "
+		if s:colonSep
+			if s:useBuffer
+				call s:SetMatchesFromBuffer("'^\\(" . firstPart . s:classList . secondPart . firstPart . s:clType . "\t\\)'")
+			elseif (s:useDJGPP)
+				call s:SetGrepArg("'^\\(" . firstPart . s:classList . secondPart . firstPart . s:clType . "\t\\)' cppcomplete.tags")
+				silent! let s:matches=system(s:grepPrg . " @" . s:grepTemp)
+			else
+				let s:matches=system(s:grepPrg . maxGrep . " '^\\(" . firstPart . s:classList . secondPart . firstPart . s:clType . "\t\\)' cppcomplete.tags")
+			endif
 
+		else
+			if s:useBuffer
+				call s:SetMatchesFromBuffer("'^" . firstPart . s:classList . secondPart . "'")
+			elseif s:useDJGPP
+				call s:SetGrepArg("'^" . firstPart . s:classList . secondPart . "'")
+				silent! let s:matches=system(s:grepPrg . " @" . s:grepTemp . " cppcomplete.tags")
 			else
-				if s:useDJGPP
-					call s:SetGrepArg("'^" . firstPart . s:classList . secondPart)
-					silent! let s:matches=system(s:grepPrg . " @greparg.tmp")
-				else
-					let s:matches=system(s:grepPrg . " '^" . firstPart . s:classList . secondPart)
-				endif
+				let s:matches=system(s:grepPrg . maxGrep . " '^" . firstPart . s:classList . secondPart . "' cppcomplete.tags")
 			endif
-			let s:accessCheck=accSav
-			if (triesLeft>0) && (s:matches=="")
-				if (! s:GetTagsDef())
-					let triesLeft=0
-					call s:BuildIt()
-				endif
-			else
-				call s:BuildIt()
-				let triesLeft=0
-			endif
-		endwhile
+		endif
+		let s:accessCheck=accSav
+		call s:BuildIt()
+	elseif s:completeOrdinary && (s:uTyped!="") && (! s:gotCSep)
+		call s:BuildFromOrdinary()
+		call s:BuildIt()
 	else
 		let s:matches=""
 		call s:BuildIt()
@@ -923,12 +1088,26 @@ function! s:GetPieces()
 
 	call s:GetUserTyped()
 	if (s:gotUTyped>0)
+		if line(".")!=lineP
+			let lineP2 = line(".")
+			let colP2 = virtcol(".")
+			call search("//","bW")
+			if (virtcol(".")!=colP2) && (lineP2==line("."))
+				exe lineP.'normal! '.colP.'|'
+				return
+			else
+				exe lineP2.'normal! '.colP2.'|'
+			endif
+		endif
 		call s:GetClassSep()
 		if (s:gotCSep)
 			let s:innerStruct=0
+			let s:currDepth=0
+			let s:isStruct=0
 			if (s:colonSep)
 				let s:clType=expand("<cword>")
 				let s:gotCType=(s:clType!="")
+				call s:CheckClassType()
 			else
 				call s:GetClassType()
 			endif
@@ -939,8 +1118,7 @@ endfunction
 " The stuff that was typed after  ::, -> or . 
 function! s:GetUserTyped()
 	let c = getline(line("."))[col(".") - 1]
-	normal! w
-	normal! b
+	normal! wb
 	if (c!="~") 
 		let c = getline(line("."))[col(".") - 1]
 		if (c=="]") 
@@ -974,6 +1152,14 @@ endfunction
 function! s:GetClassSep()
 	let c = getline(line("."))[col(".") - 1]
 	if ((c == "-")  || (c == "."))
+		if c=="-"
+			normal! l
+			let c = getline(line("."))[col(".") - 1]
+			if c!=">"
+				return 0
+			endif
+			normal! h
+		endif
 		normal! b
 		let s:gotCSep=1
 	elseif (c==":")
@@ -1053,23 +1239,103 @@ function! s:GetClassSep()
 endfunction
 
 function! s:GetClassType()
-	let hasTagJumped=s:JumpToDecl()
+	let lineT=line(".")
+	let colT=virtcol(".")
+	let hasTagJumped=s:JumpToDecl(1)
 	if (hasTagJumped==-1)
 		return
 	endif
+
 	call s:GetType()
 	if hasTagJumped
 		quit
 "		pop
 	endif
+	if s:gotCType 
+		call s:CheckClassType()
+		if (s:gotCType)
+			return
+		endif
+		if (hasTagJumped)
+			exe lineT.'normal! '.colT.'|'
+			if s:JumpToDecl(0)==-1
+				return
+			endif
+			call s:GetType()
+			if s:gotCType
+				call s:CheckClassType()
+			endif
+		endif
+	endif
 endfunction
-" GetClassType moves back from the place there gd has jumped to and tries to
-" determine the class type
-function! s:JumpToDecl()
+function! s:CheckClassType()
+	let spaceAfter="[^!\t]\\+\t"
+	let goodTypes="s\\|u\\|c\\|"
+	if s:searchTDefs
+		let goodTypes=goodTypes . "\\|t"
+	endif
+	if s:searchMacros
+		let goodTypes=goodTypes . "\\|d"
+	endif
+	let goodTypes="\\(" . goodTypes . "\\)"
+	if s:useBuffer
+		split
+		call s:CheckHiddenLoaded()
+		let foundIt=""
+		let x=line(".")
+		execute ":call search(" . "'^" . s:clType . "\t" . spaceAfter . spaceAfter . goodTypes . "','W')"
+		while line(".")!=x
+			let x=line(".")
+			normal! "cyy$
+			let foundIt=foundIt . @c
+			execute ":call search(" . "'^" . s:clType . "\t" . spaceAfter . spaceAfter . goodTypes . "','W')"
+		endwhile
+		quit
+	elseif s:useDJGPP
+		call s:SetGrepArg("'^" . s:clType . "\t" . spaceAfter . spaceAfter . goodTypes . "' cppcomplete.tags")
+		silent! let foundIt=system(s:grepPrg . " @" . s:grepTemp)
+	else
+		let foundIt=system(s:grepPrg . " '^" . s:clType . "\t" . spaceAfter . spaceAfter . goodTypes . "' cppcomplete.tags")
+	endif
+	if foundIt==""
+		let s:gotCType=0
+	elseif match(foundIt, "\t\\(s\\|u\\|c\\)[\t\n]")<0
+		let s:gotCType=0
+		if match(foundIt, "\tt[\t\n]")>0
+			if s:searchTDefs
+				call s:GetTypedef(foundIt)
+			endif
+		else
+			if s:searchMacros
+				call s:GetMacro(foundIt)
+			endif
+		endif
+	elseif match(foundIt, "\ts[\t\n]")>=0
+		let s:isStruct=1
+	endif
+endfunction
+function! s:IsTypedefStruct(wordCheck)
+	let isStructSave=s:isStruct
+	let s:isStruct=0
+	let clTypeSave=s:clType
+	let s:clType=a:wordCheck
+	let s:currDepth=0
+	call s:CheckClassType()
+	if s:gotCType && (s:clType!=a:wordCheck)
+		call s:CheckClassType()
+	endif
+	let res=s:isStruct && s:gotCType
+	let s:isStruct=isStructSave
+	let s:typeDefStruct=s:clType
+	let s:clType=clTypeSave
+	return res 
+endfunction
+		
+function! s:JumpToDecl(jumpAllowed)
 	let lineT=line(".")
 	let colT=virtcol(".")
 	let s:innerStruct=0
-	if s:searchGlobalVars || s:searchClassMembers || s:searchClassTags
+	if a:jumpAllowed && (s:searchGlobalVars || s:searchClassMembers || s:searchClassTags)
 		call s:DoGlobalJump()
 		if s:gotCType
 			return -1
@@ -1078,7 +1344,7 @@ function! s:JumpToDecl()
 	if ((virtcol(".") == colT) && (line(".") == lineT))
 		normal! b
 		let c = getline(line("."))[col(".") - 1]
-		if (c==".") || (c=="-") || (c==":")
+		if a:jumpAllowed && ((c==".") || (c=="-") || (c==":"))
 			let lucky=1
 			if (c=="-")
 				normal! l
@@ -1089,12 +1355,13 @@ function! s:JumpToDecl()
 				normal! h
 			endif
 			if lucky && (line(".")!=lineT)
-				normal! mc
+				let lineT2=line(".")
+				let colT2=virtcol(".")
 				let newLine=line(".")
 				if (search("//","bW")==newLine)
 					let lucky=0
 				endif
-				normal! 'c
+				exe lineT2.'normal! '.colT2.'|'
 			endif
 			normal! w
 			if lucky
@@ -1125,8 +1392,7 @@ function! s:GetType()
 		let c = getline(line("."))[col(".") - 1]
 
 		if (c == ")")
-			normal! [(
-			normal! b
+			normal! [(b
 			continue
 		elseif (c=="]")
 			while (c!="[") && (line(".")>1)
@@ -1144,8 +1410,7 @@ function! s:GetType()
 		if (c == ",")
 			normal! b
 		elseif (c=="}")
-			normal! [{
-			normal! b
+			normal! [{b
 			let s:gotCType=1
 			let s:clType = expand("<cword>")
 			return
@@ -1160,14 +1425,15 @@ function! s:GetType()
 					let c = getline(line("."))[col(".") - 1]
 					normal! b
 					if (line(".")!=prevLine)
-						normal! mc
+						let lineT2=line(".")
+						let colT2=virtcol(".")
 						let newLine=line(".")
 						if (search("//","bW")==newLine)
 							let c2="x"
 						else
 							let c2 = getline(line("."))[col(".") - 1]
 						endif
-						normal! 'c
+						exe lineT2.'normal! '.colT2.'|'
 					else
 						let c2 = getline(line("."))[col(".") - 1]
 					endif
@@ -1211,10 +1477,11 @@ function! s:GetType()
 	endwhile
 endfunction
 function! s:TryLocalJump()
-	normal! mc
+	let lineT2=line(".")
+	let colT2=virtcol(".")
 	normal! gd
 	if s:IsInsane()
-		normal! 'c
+		exe lineT2.'normal! '.colT2.'|'
 	endif
 endfunction
 function! s:IsInsane()
@@ -1242,7 +1509,6 @@ function! s:IsInsane()
 	exe insaneLine.'normal! '.insaneCol.'|'
 	return (c==".") || (c==":") || (c=="-")
 endfunction	
-
 	
 function! s:JumpToInterestingLine(lines, i)
 	let lEnd=match(a:lines, "\n", a:i)
@@ -1261,45 +1527,36 @@ function! s:JumpToInterestingLine(lines, i)
 endfunction
 	
 " If a typedef was used
-function! s:GetTypedef()
-	let oldClType=s:clType
+function! s:GetTypedef(foundIt)
 	let s:gotCType=0
-	let lEnd=match(s:matches, "\n") 
-	if lEnd<0
-		let lEnd=strlen(s:matches)
+	let s:currDepth=s:currDepth+1
+	if s:currDepth>=s:maxDepth
+		return
 	endif
 	split
-	call s:DoTagLikeJump(strpart(s:matches, 0, lEnd))
+	call s:DoTagLikeJump(a:foundIt)
 	call search(s:clType)
-	call s:GetType()
-	quit
-	if (! s:gotCType)
-		let s:gotCType=1
-		let s:clType=oldClType
-		return 0
-	else
-		return 1
+	let lineT=line(".")
+	let colT=virtcol(".")
+	call s:GetClassType()
+	if ! s:gotCType
+		exe lineT.'normal! '.colT.'|'
+		call s:GetType()
 	endif
+	quit
 endfunction
 " a simple approach for macros
-function! s:GetMacro()
-	let lEnd=match(s:matches, "\n") 
-	if lEnd<0
-		let lEnd=strlen(s:matches)
-	endif
+function! s:GetMacro(foundIt)
 	split
-	call s:DoTagLikeJump(strpart(s:matches, 0, lEnd))
-	execute "tag " s:clType
-	normal! w
-	normal! w
-	normal! w
+	call s:DoTagLikeJump(a:foundIt)
+	normal! www
 	let s:clType=expand("<cword>")
 	if (s:clType=="class" || s:clType=="struct" || s:clType=="union")
 		normal! w
 		let s:clType=expand("<cword>")
 	endif
+	let s:gotCType=1
 	quit
-	return 1
 endfunction
 " Get the ancestors, I do not think that ctags always gives a complete list
 function! s:GetParents()
@@ -1317,17 +1574,27 @@ function! s:GetParents()
 			let i2=matchend(inhLine, "inherits:")
 			let c=","
 			while c==","
-				let i=match(inhLine,",",i2)
+				let i=match(inhLine,"[,\t\n]",i2)
 				if (i==-1)
-					let i=match(inhLine, "\t",i2)
-					if (i==-1)
+"					let i=match(inhLine, "[\t\n]",i2)
+"					if (i==-1)
 						let i=strlen(inhLine)
-					endif
+"					endif
 				endif
 				let @c=strpart(inhLine,i2,i-i2)
 				if  match(searched,":" . @c . ":")<0
 					let searched=searched . ":" . @c . ":"
-					let s:classList=s:classList . "\\|" . @c
+					if s:isStruct
+						if s:IsTypedefStruct(@c)
+							let @c=s:typeDefStruct
+							let searched=searched . ":" . s:typeDefStruct . ":"
+						else
+							let @c=strpart(inhLine,i2,i-i2)
+						endif
+						let s:classList=s:classList . "\\|" . @c
+					else
+						let s:classList=s:classList . "\\|" . @c
+					endif
 					if (strlen(unsearched)>0)
 						let unsearched=unsearched . ":" . @c 
 					else
@@ -1355,21 +1622,21 @@ function! s:GetParents()
 			let rest=""
 		endif
 		if s:currLanguage=="Java"
-			let s:classList="\\([^\\.]*\\.\\)\\(.*\\." . s:clType . rest . "\\)\\(\\.<anonymous>\\)*[\t]"
+			let s:classList="\\([^\\.]*\\.\\)\\(.*\\." . s:clType . rest . "\\)\\(\\.<anonymous>\\)*\t"
 		else
-			let s:classList="\\([^:]*::\\)*\\(.*::" . s:clType . rest . "\\)\\(::<anonymous>\\)*[\t]"
+			let s:classList="\\([^:]*::\\)*\\(.*::" . s:clType . rest . "\\)\\(::<anonymous>\\)*\t"
 		endif
 	elseif s:currLanguage=="Java"
 		if s:relaxedParents
-			let s:classList="\\([^\\.]*\\.\\)*\\(" . s:classList . "\\)\\(\\.<anonymous>\\)*[\t]"
+			let s:classList="\\([^\\.]*\\.\\)*\\(" . s:classList . "\\)\\(\\.<anonymous>\\)*\t"
 		else
-			let s:classList="\\(<anonymous>.\\)*\\(" . s:classList . "\\)\\(\\.<anonymous>\\)*[\t]"
+			let s:classList="\\(<anonymous>.\\)*\\(" . s:classList . "\\)\\(\\.<anonymous>\\)*\t"
 		endif
 	else
 		if s:relaxedParents
-			let s:classList="\\([^:]*::\\)*\\(" . s:classList . "\\)\\(::<anonymous>\\)*[\t]"
+			let s:classList="\\([^:]*::\\)*\\(" . s:classList . "\\)\\(::<anonymous>\\)*\t"
 		else
-			let s:classList="\\(<anonymous>::\\)*\\(" . s:classList . "\\)\\(::<anonymous>\\)*[\t]"
+			let s:classList="\\(<anonymous>::\\)*\\(" . s:classList . "\\)\\(::<anonymous>\\)*\t"
 		endif
 	endif
 " Uncommenting the following line can be useful if you have hacked the script but breaks the popup in GTK.
@@ -1378,7 +1645,7 @@ endfunction
 function! s:JumpToLineInBlock(n)
 	if s:regexBlock==""
 		if has("gui_running") 
-			call confirm("The current block is empty","&Ok",1,"Error")
+			call confirm("The current block is empty","&OK",1,"Error")
 		endif
 		return
 	endif
@@ -1420,16 +1687,31 @@ endfunction
 function! s:BuildBlock(regex)
 	let s:regexBlock=""
 	if has("gui_running") 
-		silent! aunmenu CppComplete.Preview.Regexp
+		silent! aunmenu cppcomplete.Preview.Regexp
 	endif
 	let s:nLinesInBlock=0
 	let s:currInBlock=0
 	if (a:regex=="")
 		return
 	endif
-	if s:useDJGPP
+	if s:useBuffer
+		split
+		let s:regexBlock=""
+		call s:CheckHiddenLoaded()
+		let x=line(".")
+		execute ":call search('" . a:regex . "','W')"
+		while line(".")!=x
+			let x=line(".")
+			normal! "cyy$
+			if strpart(@c,1,1)!="!" || 1
+				let s:regexBlock=s:regexBlock . @c
+			endif
+			execute ":call search('" . a:regex . "','W')"
+		endwhile
+		quit
+	elseif s:useDJGPP
 		call s:SetGrepArg("'" . a:regex ."' cppcomplete.tags")
-		let s:regexBlock=system(s:grepPrg . " @greparg.tmp |" . s:grepPrg . " '^[^!]'")
+		let s:regexBlock=system(s:grepPrg . " @" . s:grepTemp . " | " . s:grepPrg . " '^[^!]'")
 	else
 		let s:regexBlock=system(s:grepPrg . " '" . a:regex ."' cppcomplete.tags | " . s:grepPrg ." '^[^!]'")
 	endif
@@ -1514,8 +1796,17 @@ function! s:DoTagLikeJump(tagLine)
 	let exStart=fEnd+1
 	let exEnd=match(a:tagLine, "\t", exStart)
 	let jEX=strpart(a:tagLine, exStart, exEnd-exStart)
-	execute "edit! " . jFile
+	execut "edit! " . jFile
 	execute jEX
+endfunction
+function! s:CheckHiddenLoaded()
+	if !bufexists(getcwd() . "/cppcomplete.tags") || (getftime(getcwd() . "/cppcomplete.tags")!=s:bufAge)
+		execute "edit! " . getcwd() . "/cppcomplete.tags"
+		let &buflisted=0
+		let s:bufAge=getftime(getcwd() . "/cppcomplete.tags")
+	endif
+	execute "buffer " . getcwd() . "/cppcomplete.tags"
+	normal! gg^
 endfunction
 
 function! s:SimpleScopeGuess()
@@ -1527,7 +1818,7 @@ function! s:SimpleScopeGuess()
 	return 1
 endfunction
 function! s:DoGlobalJump()
-	let spaceAfter="[^!\t]\\+[\t]"
+	let spaceAfter="[^!\t]\\+\t"
 	let tStr=""
 	if s:searchClassMembers && s:searchGlobalVars
 		let tStr="m\\|v"
@@ -1545,11 +1836,24 @@ function! s:DoGlobalJump()
 	endif
 	let tStr="\\(" . tStr . "\\)"
 	let searchFor=expand("<cword>")
-	if s:useDJGPP
-		call s:SetGrepArg("'^" . searchFor . "[\t]" . spaceAfter . spaceAfter . tStr . "' cppcomplete.tags")
-		silent! let foundIt=system(s:grepPrg . " @greparg.tmp")
+	if s:useBuffer
+		split
+		let foundIt=""
+		call s:CheckHiddenLoaded()
+		let x=line(".")
+		execute ":call search(" . "'^" . searchFor . "\t" . spaceAfter . spaceAfter . tStr . "','W')"
+		while line(".")!=x
+			let x=line(".")
+			normal! "cyy$
+			let foundIt=foundIt . @c
+			execute ":call search(" . "'^" . searchFor . "\t" . spaceAfter . spaceAfter . tStr . "','W')"
+		endwhile
+		quit
+	elseif s:useDJGPP
+		call s:SetGrepArg("'^" . searchFor . "\t" . spaceAfter . spaceAfter . tStr . "' cppcomplete.tags")
+		silent! let foundIt=system(s:grepPrg . " @" . s:grepTemp)
 	else
-		let foundIt=system(s:grepPrg . " '^" . searchFor . "[\t]" . spaceAfter . spaceAfter . tStr . "' cppcomplete.tags")
+		let foundIt=system(s:grepPrg . " '^" . searchFor . "\t" . spaceAfter . spaceAfter . tStr . "' cppcomplete.tags")
 	endif
 	if foundIt!=""
 		if match(foundIt, "\t\\(u\\|s\\|c\\)\t")<0 
@@ -1571,40 +1875,87 @@ function! s:DoGlobalJump()
 		endif
 	endif
 endfunction
-" Check for a typedef/macro in cppcomplete.tags
-function! s:GetTagsDef()
-	let spaceAfter="[^!\t]\\+[\t]"
-	if (s:searchTDefs)
-		if s:useDJGPP
-			call s:SetGrepArg("'^" . s:clType . "[\t]" . spaceAfter . spaceAfter . "t' cppcomplete.tags")
-			silent! let s:matches=system(s:grepPrg . " @greparg.tmp")
-		else
-			let s:matches=system(s:grepPrg . " '^" . s:clType . "[\t]" . spaceAfter . spaceAfter . "t' cppcomplete.tags")
-		endif
-		if (s:matches!="")
-			return s:GetTypedef()
-		endif
-	endif
-	if (s:searchMacros)
-		if s:useDJGPP
-			call s:SetGrepArg("'^" . s:clType . "[\t]" . spaceAfter . spaceAfter . "t' cppcomplete.tags")
-			silent! let s:matches=system(s:grepPrg . " @greparg.tmp")
-		else
-			let s:matches=system(greparg . " '^" . s:clType . "[\t]" . spaceAfter . spaceAfter . "d' cppcomplete.tags")
-		endif
-		if (s:matches!="")
-			return s:GetMacro()
-		endif
-	endif
-	return 0
-endfunction
 function! s:CheckForTagFile()
-	if getftime("cppcomplete.tags")==-1
-		call confirm("No cppcomplete.tags found","&Ok",1,"Error")
+	if s:nannyMode && s:HasNotAsked()
+		return s:NannyCheck()
+	elseif getftime("cppcomplete.tags")==-1
+		if s:nannyMode 
+			return s:NannyCheck()
+		endif
+		if has("gui_running")
+			call confirm("No cppcomplete.tags found","&OK",1,"Error")
+		endif
 		return 0
 	endif
 	return 1
 endfunction
+function! s:HasNotAsked()
+	let cFile=substitute(expand("%"),"\\",":","g")
+	if match(s:nannyAsked, "\n" . cFile . "\n")>=0
+		return 0
+	endif
+	let s:nannyAsked=s:nannyAsked . cFile . "\n"
+	return 1
+endfunction
+function! s:CheckFiletype()
+	let fType=expand("%:e")
+	if fType=="c" || fType=="C" || fType=="cpp" || fType=="h" || fType=="cxx" || fType=="hxx"
+		if s:currLanguage=="Java"
+			if confirm("The name of the current file indicates\na C/C++ file but the current language is set to Java.\nDo you want to change it to C/C++?","&Yes\n&No",1,"Warning")==1
+				let s:currLanguage="C/C++"
+			endif
+		endif
+	elseif fType=="java" && (s:currLanguage!="Java")
+		if confirm("The name of the current file indicates\na Java file but the current language is C/C++.\nDo you want to change it to Java?","&Yes\n&No",1,"Warning")==1
+			let s:currLanguage="Java"
+		endif
+	endif
+endfunction
+function! s:NannyCheck()
+	if getftime("cppcomplete.tags")==-1
+		if s:currLanguage=="Java"
+			let ans=confirm("No cppcomplete.tahs file found","&Generate from the files in the current directory\n&Cancel",1,"Question")
+			if ans==1
+				return s:GenerateTags()
+			else
+				return 0
+			endif
+		endif
+		let ans=confirm("No cppcomplete.tags file found.","&Auto generate from included files\n&Generate from the files in the current directory\n&Cancel",1,"Question")
+		if ans==1
+			return s:GenerateFromCheckpath()
+		elseif ans==2
+			return s:GenerateTags()
+		else
+			return 0
+		endif
+			
+	elseif s:currLanguage=="Java"
+		let ans=confirm("A cppcomplete.tags file already exists.","&Use it\n&Generate new\nC&omplete it\n&Cancel",1,"Question")
+		if ans==2
+			call s:GenerateTags()
+		elseif ans==3
+			call s:GenerateAndAppend()
+		elseif ans==4
+			return 0
+		endif
+	else
+		let ans=confirm("A cppcomplete.tags file already exists.","&Use it\nAu&to complete it\n&Auto generate new\n&Generate new\nC&omplete it\n&Cancel",1,"Question")
+		if ans==2
+			call s:AppendFromCheckpath()
+		elseif ans==3
+			call s:GenerateFromCheckpath()
+		elseif ans==4
+			call s:GenerateTags()
+		elseif ans==5
+			call s:GenerateAndAppend()
+		elseif ans==6
+			return 0
+		endif
+	endif
+	return 1
+endfunction
+		
 function! s:SetMaxHits()
 	let res=inputdialog("Current value for max hits is " . s:tooBig . "\nEnter the new value")
 	if res!=""
@@ -1644,10 +1995,137 @@ function! s:ShowCurrentSettings()
 		let setStr=setStr . "\nCurrent value for max hits is " . s:tooBig
 		let setStr=setStr . "\nSearches is being done with " . (s:grepPrg=="grep" ? "standard grep" : "fast grep")
 		let setStr=setStr . "\nThe scope resolution operator :: will " . (s:colonNoInherit ? "not " : "") . "show everything in the scope"
-		call confirm(setStr, "&Ok",1,"Info")
+		let setStr=setStr . "\nNanny mode is " . (s:nannyMode ? "enabled" : "disabled")
+		call confirm(setStr, "&OK",1,"Info")
 	endif
 endfunction
+function! s:GetIncludeFiles()
+	if has("gui_running") 
+		call s:CheckFiletype() 
+	endif
+	if s:currLanguage=="Java"
+		if has("gui_running")
+			call confirm("This commando is not supported for Java","&OK",1,"Error")
+		endif
+		return 0
+	endif
+	silent redir @c
+	silent! checkpath!
+	redir END
+	if match(@c,"No included files")>=0
+		return 0
+	endif
+	if has("win32") || has("win16") || has("dos16") || has("dos32")
+		let sep="\n"
+	else
+		let sep=" "
+	endif
+	let s:includedFiles=expand("%") . sep
+	let nextM=matchend(@c, "Included files [^\n]*\n")
+	let totalIncFiles=0
+	let missedIncFiles=0
+	echon "\r                                             "
+	echon "\rsearching for included files..."
+	redraw
+	while (nextM<strlen(@c))
+		let totalIncFiles=totalIncFiles+1
+		let prevM=nextM
+		let nextM=match(@c, "\n",prevM+1)
+		if (nextM<0)
+			let nextM=strlen(@c)
+		endif
+		let thisLine=strpart(@c, prevM, nextM-prevM)
+		if match(thisLine, "NOT FOUND")>0
+			let missedIncFiles=missedIncFiles+1
+			continue
+		elseif match(thisLine, "(Already listed)")>0
+			continue
+		elseif (match(thisLine, " -->")>0)
+			continue
+		else
+			let firstC=matchend(thisLine,"[\"<]")
+			let lastC=match(thisLine, "[\">]", firstC)
+			let fName=substitute(strpart(thisLine, firstC, lastC-firstC),"\n","","g")
+			if (fName=="")
+				continue
+			endif
+			let s:includedFiles=s:includedFiles . globpath(&path,fName) . sep
+
+		endif
+	endwhile
+	if missedIncFiles>0
+		let str1="Of " . totalIncFiles . " files was " . missedIncFiles . " not found."
+		if 2*missedIncFiles>totalIncFiles && has ("gui_running")
+			let pStr="\nYour path is set to " . &path . "\nIs this really correct?"
+			if confirm(str1 . pStr, "&Generate it\n&Cancel",2,"Error")!=1
+				return 0
+			endif
+		elseif has("gui_running")
+			if confirm(str1 . "\nThe :checkpath command lists the missing files", "&OK\n&Cancel",1,"Warning")==2
+			return 0
+			endif
+		endif
+	else	
+		echon "\r                                                           "
+		echon "\rcould findd all files... generating cppcomplete.tags"
+	endif
+	return 1
+endfunction
+function! s:UpdatehiddenBuffer()
+	if s:useBuffer
+		split
+		call s:CheckHiddenLoaded()
+		quit
+	endif
+endfunction
+function! s:AnotherLongCommandLinePatchForWindows()
+	silent! call delete(s:ctagsTemp)
+	split
+	silent! execute "silent! edit " s:ctagsTemp
+	let @c=s:includedFiles
+	normal! "cp
+	silent! w
+	silent! bd
+endfunction
+function! s:GenerateFromCheckpath()
+	if has("gui_running")
+		if getftime("cppcomplete.tags")!=-1
+			let dial=confirm("You already have a cppcomplete.tags file, do you really want to destroy it?", "&Yes, I really want to replace it\n&No, I keep the old one",2,"Warning")
+			if (dial!=1)
+				return 0
+			endif
+		endif
+	endif
+	if (! s:GetIncludeFiles())
+		return 0
+	endif
+	if has("win32") || has("win16") || has("dos16") || has("dos32")
+		call s:AnotherLongCommandLinePatchForWindows()
+		call system("ctags -n --language-force=C++ -f cppcomplete.tags --fields=+ai --C++-types=+p -L " . s:ctagsTemp)
+	else
+		call system("ctags -n --language-force=C++ -f cppcomplete.tags --fields=+ai --C++-types=+p " . s:includedFiles)
+	endif
+	call s:UpdatehiddenBuffer()
+	return 1
+endfunction
+function! s:AppendFromCheckpath()
+	if (! s:GetIncludeFiles())
+		return 0
+	endif
+	if has("win32") || has("win16") || has("dos16") || has("dos32")
+		call s:AnotherLongCommandLinePatchForWindows()
+		call system("ctags -n --language-force=C++ -a -f cppcomplete.tags --fields=+ai --C++-types=+p " . s:ctagsTemp)
+	else
+		call system("ctags -n --language-force=C++ -a -f cppcomplete.tags --fields=+ai --C++-types=+p " . s:includedFiles)
+	endif
+	call s:UpdatehiddenBuffer()
+	return 1
+endfunction
+
 function! s:BrowseNFiles()
+	if has("gui_running") 
+		call s:CheckFiletype() 
+	endif
 	let browseFile=""
 	let browseFile=browse(0, "File to include in cppcomplete.tags","./","")
 	if (browseFile!="")
@@ -1656,23 +2134,32 @@ function! s:BrowseNFiles()
 		else
 			call system("ctags -n -a -f cppcomplete.tags --fields=+ai --C++-types=+p " . browseFile)
 		endif
+		call s:UpdatehiddenBuffer()
 	endif
 endfunction
 function! s:GenerateAndAppend()
+	if has("gui_running") 
+		call s:CheckFiletype() 
+	endif
 	if (s:currLanguage=="Java")
 		call system("ctags -n -a -f cppcomplete.tags --fields=+ai *")
 	else
 		call system("ctags -n -a -f cppcomplete.tags --fields=+ai --C++-types=+p *")
 	endif
+	call s:UpdatehiddenBuffer()
+	return 1
 endfunction
 
 " shows how the tags should be generated
 function! s:GenerateTags()
+	if has("gui_running") 
+		call s:CheckFiletype() 
+	endif
 	if has("gui_running")
 		if getftime("cppcomplete.tags")!=-1
 			let dial=confirm("You already have a cppcomplete.tags file, do you really want to destroy it?", "&Yes, I really want to replace it\n&No, I keep the old one",2,"Warning")
 			if (dial!=1)
-				return
+				return 0
 			endif
 		endif
 	endif
@@ -1681,4 +2168,6 @@ function! s:GenerateTags()
 	else
 		execute "!ctags -n -f cppcomplete.tags --fields=+ai --C++-types=+p *"
 	endif
+	call s:UpdatehiddenBuffer()
+	return 1
 endfunction
