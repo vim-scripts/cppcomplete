@@ -1,0 +1,95 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=527
+
+This plugin helps you complete things like:
+variableName.abc
+variableName->abc
+typeName::abc
+from the members of the struct/class/union that starts with abc.
+If you just type abc will the script complete it with the names that 
+starts with abc and ignore any current scope.
+
+The default key mapping to complete the code are:
+Alt+l in insert mode will try to find the possible completions and display
+them in a popup menu. Also normal completions to the names in
+cppcomplete.tags.
+Alt+j in insert mode will show the popup menu with the last results.
+Selecting one of the  items will paste the text.
+F8/F9 will work in a similar way as Ctrl+N, Ctrl+P in unextended vim so the
+script can be used without the popup menu.
+F5 in insert mode will lookup the class and display it in a preview window
+The key mapping are only tested under Windows and linux and they will not
+work on all platforms. Changing the mappings is easy.
+
+The plugin is depending on that exuberant ctags has generated a tags file
+called cppcomplete.tags with the same options as in the following example:
+ctags -n -f cppcomplete.tags --fields=+ai --C++-types=+p *
+The script has a command called GenerateTags that executes the above ctags
+command. The tag file cppcomplete.tags is local to the script so you can
+use other tag files without affecting cppcomplete. 
+Java users do not need the --C++-types flag.
+
+For C/C++ can the script generate the cppcomplete.tags from the included
+files for you. This is based on vims checkpath function. The path must be
+set correct, see the vim documentation.
+
+This script do not requires grep anymore but it is supported. If the option
+is set to build an internal list with derived classes and the first
+completion takes a very long time may grep speed things up. 
+For Windows does the DJGPP  port of grep works. 
+You only need grep.exe from the grep'version'b.zip file.
+A good place for grep.exe could be the compilers bin directory.
+The zip file is in the v2gnu directory, it can be downloaded from here:
+http://www.delorie.com/djgpp/getting.html
+
+It is possible to define a set of lines from cppcomplete.tags with regular
+expressions. I call the set for a block. The functions for this:
+BuildBlockFromRegexp the command to build the block, see below.
+NextInBlock jump to the line described in the block, can be called by Shift+F8 
+PrevInBlock same as the above but in the other direction, use Shift+F9
+EchoBlock shows the block itself
+BuildMenuFromBlock builds a menu in GUI mode from the block
+The jumps are done with an internal function so the tag stack will not be
+affected.
+
+Some simple examples there > is the prompt:
+>class:l
+Gives a block with all members that has a scope of a class beginning with l
+>^a.*\ts\t
+all structures beginning with an a
+>^\(a\|b\|c)
+Everything that starts with a,b or c
+The full vim history mechanism can be used.
+
+The script has a number of variables that can be set from the menu in the 
+GUI or wildmenu versions. They are at the top of the script file with descriptions if
+you want to change them more permanent.
+
+For Java do you probably want to generate a cppcomplete.tags file from the
+sources of the Java SDK. The use is like with C/C++ but you will get a
+better result if you change some of the configuration variables.
+The default access is treated as if it was public. 
+
+If you are new to vim and have not heard about ctags, regexp, grep are they
+all described in the online documentation. Just type :help followed by the word you
+want more information about. They are excellent tools that can be used for
+many things.
+
+
+BUGS/Features
+This plugin does not really understand any C/C++ code, it is not a real parser.
+It works surprisingly well but can of course give a surprising result. :)
+The current scope is unknown.
+Multidimensional arrays should not have a space between ][, e.g.
+xyz[1][2].abc should be OK but not xyz[1] [2].abc
+The script does not accept functions, e.g. xyc()->abc will not be completed or rather
+it will be completed but from all names beginning with abc.
+(GTK) If the mouse leaves and then reenters the popup menu is the text cursor affected.
+(GTK) The popup is displayed at the mouse position and not the text cursor position.
+For internal use is register c used.
+Requires exuberant ctags.
+The only tested platforms for the popup menu are GTK (linux) and Windows.
++ probably a lot of other issues
+
+Anyway, I have done some testing with MFC, DX9 framework (not COM), Java SDK, STL with
+good results.
+
