@@ -108,7 +108,7 @@ let s:searchMacros=0
 
 " I have not tested to have anything else than 25 menu lines, not used under
 " Windows.
-let s:maxNMenuLines=25
+let s:maxNMenuLines=35
 
 " Search cppcomplete.tags for class members?
 " It is _really_ recommended that this is on or the script will not know of
@@ -550,6 +550,9 @@ function! s:BuildMenuFromBlock()
 			let grouped=0
 		endif
 	endif
+	let bMore=""
+	let uMore=""
+	let uLines=0
 	while match(s:regexBlock, "\t", nextM)>0
 		let oldM=nextM
 		let nLines=nLines+1
@@ -560,16 +563,28 @@ function! s:BuildMenuFromBlock()
 		endif
 		if grouped
 			let gStart=matchend(s:regexBlock,"^[^\t]*\t[^\t]*\t[^\t]*\t[^\t]*\t\\(class\\|struct\\|union\\):",oldM)
+
 			if gStart<0
-				let group="uncategorized."
+				let uLines=uLines+1
+				if !s:useWinMenu
+					if (uLines % s:maxNMenuLines)==0
+						let uMore=uMore . "More."
+					endif
+				endif
+				let group="uncategorized." . uMore 
 			else
 				let gEnd=match(s:regexBlock,"\t",gStart)
 				let group=strpart(s:regexBlock, gStart, gEnd-gStart) . "."
 			endif
 		else
 			let group=""
+			if !s:useWinMenu
+				if (nLines % s:maxNMenuLines)==0
+					let bMore=bMore . "More."
+				endif
+			endif
 		endif
-		execute "amenu &CppComplete.&Preview.Regexp." . group . @c . " :JumpToLineInBlock " . nLines . "<CR>"
+		execute "amenu &CppComplete.&Preview.Regexp." . bMore . group . @c . " :JumpToLineInBlock " . nLines . "<CR>"
 	endwhile
 	if nLines==0
 		call confirm("Could not build the menu", "&Ok",1,"Error")
@@ -640,8 +655,8 @@ function! s:BuildIt()
 			let s:nHits=s:nHits+1
 			let line=line+1
 			if (! s:useWinMenu)
-				if (line%s:maxNMenuLines)==0
-					let pMore=pMore " . "More."
+				if (line % s:maxNMenuLines)==0
+					let pMore=pMore  . "More."
 				endif
 			endif
 		endif
@@ -656,7 +671,11 @@ function! s:BuildIt()
 		let s:hitList=s:hitList . "xxxxxxMAX_NR_OF_HITSxxxxxx\n"
 		if has("gui_running") 
 			let qStr="Max number of hits reached"
-			amenu PopUp.****\ \ Max\ number\ of\ hits\ reched\ **** <NOP>
+			if !s:useWinMenu
+				execute "amenu PopUp." . pMore . "xxxxxxMAX_NR_OF_HITSxxxxxx <NOP>"
+			else
+				amenu PopUp.****\ \ Max\ number\ of\ hits\ reched\ **** <NOP>
+			endif
 			call confirm( qStr, "&Ok", 1,"Warning")
 		endif
 	endif
@@ -802,7 +821,6 @@ function! s:UpdateInheritList()
 			silent! let s:inheritsList="\n" . system(s:grepPrg . " @greparg.tmp")
 		else
 			let s:inheritsList="\n" . system(s:grepPrg . " '^" . after3 . ".*" ."inherits:.*' cppcomplete.tags")
-			echo s:inheritsList
 		endif
 		let s:listAge=getftime("cppcomplete.tags")
 	endif
@@ -1165,6 +1183,8 @@ function! s:GetType()
 					else
 						if (c2==":") || (c2==".") || (c2=="-")
 							let s:relaxedParents=1
+						elseif (c2=="<")
+							continue
 						endif
 						let s:gotCType=1
 						return
