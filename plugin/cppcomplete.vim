@@ -967,18 +967,22 @@ function! s:SetMatchesFromBuffer(grepArg)
 	if s:uTyped!=""
 		if s:showAccess
 			silent! execute s:RangeOf(s:uTyped) . "global/" . a:grepArg . '/let s:matches=s:matches . getline(".") . "\n"'
+			call histdel("search",-1)
 			quit
 			return
 		else
 			silent! execute s:RangeOf(s:uTyped) . "global/" . a:grepArg . "/call s:BuildSinglePass()"
+			call histdel("search",-1)
 		endif
 	else
 		if s:showAccess
 			silent! execute "1,$ global/" . a:grepArg . '/let s:matches=s:matches . getline(".") . "\n"'
+			call histdel("search",-1)
 			quit
 			return
 		else
 			silent! execute "1,$ global/" . a:grepArg . "/call s:BuildSinglePass()"
+			call histdel("search",-1)
 		endif
 	endif
 	quit
@@ -1335,6 +1339,7 @@ function! s:CheckClassType()
 		call s:CheckHiddenLoaded()
 		let foundIt=""
 		silent! execute s:RangeOf(s:clType) . "global/" . s:clType . "\t" . spaceAfter . spaceAfter . goodTypes . '/let foundIt=foundIt . getline(".") . "\n"'
+		call histdel("search",-1)
 		quit
 	elseif s:useDJGPP
 		call s:SetGrepArg("'^" . s:clType . "\t" . spaceAfter . spaceAfter . goodTypes . "' cppcomplete.tags")
@@ -1555,7 +1560,7 @@ function! s:Bettergd()
 	let cStart=colT2
 	let searchFor=expand("<cword>")
 	let s='\%(\(=.*\)\@<!\*\|&\|\_s\)'
-	call search('\([[:alnum:]_]' . s . '*\_s\+\|,\|<.*[->]\@<!>\|\]\|}\)' . s . '*' . searchFor . '\_s*\(;\|,\|=\|[\|(\|)\)','bW')
+	call search('\([[:alnum:]_]' . s . '*\_s\+\|,\|<.*[->]\@<!>\|\]\|}\(.*\<searchFor\>\)\@=\)' . s . '*' . searchFor . '\_s*\(;\|,\|=\|[\|(\|)\)','bW')
 	while (line(".")!=lineT2) || (colT2!=virtcol("."))
 		let lineT2=line(".")
 		let colT2=virtcol(".")
@@ -1582,7 +1587,7 @@ function! s:Bettergd()
 				call search('\<' . searchFor . '\>')
 				return
 			endif
-			call search('\([[:alnum:]_]' . s . '*\_s\+\|,\|<.*[->]\@<!>\|\]\|}\)' . s . '*' . searchFor . '\_s*\(;\|,\|=\|[\|(\|)\)','bW')
+			call search('\([[:alnum:]_]' . s . '*\_s\+\|,\|<.*[->]\@<!>\|\]\|}\(.*\<searchFor\>\)\@=\)' . s . '*' . searchFor . '\_s*\(;\|,\|=\|[\|(\|)\)','bW')
 		endif
 	endwhile
 	execute lStart . 'normal! ' . cStart . '|'
@@ -1674,6 +1679,7 @@ function! s:GetParents()
 		else
 			let inhLine=""
 			silent! execute s:RangeOf(clName) . " global/" . "^" . clName . '\>\t\%([^\t]*\)\@>\t\%([^\t]*\)\@>\t[suci]\t.*\<inherits:/if (inhLine=="" || ! s:IsLocal(inhLine)) | let inhLine=getline(".") . "\n" | endif'  	
+			call histdel("search",-1)
 		endif
 		if (inhLine!="")
 			let i2=matchend(inhLine, "inherits:")
@@ -2043,6 +2049,7 @@ function! s:DoGlobalJump()
 		let foundIt=""
 		call s:CheckHiddenLoaded()
 		execute s:RangeOf(searchFor) . "global/" ."^" . searchFor . "\t" . spaceAfter . spaceAfter . tStr . '/let foundIt=foundIt . getline(".") . "\n"'
+		call histdel("search",-1)
 		quit
 	elseif s:useDJGPP
 		call s:SetGrepArg("'^" . searchFor . "\t" . spaceAfter . spaceAfter . tStr . "' cppcomplete.tags")
